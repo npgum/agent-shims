@@ -31,6 +31,9 @@ class ShimHandler(BaseHTTPRequestHandler):
     timeout = 600
     log_path: str | None = None
     name = "shim"
+    # Whether to send the API key upstream. zen-shim doesn't need it (the gate
+    # is shape-based, not key-based); the router does.
+    send_key = True
 
     # ------------------------------------------------------------ overrides ---
 
@@ -71,9 +74,10 @@ class ShimHandler(BaseHTTPRequestHandler):
         headers.update({"content-type": "application/json",
                         "accept-encoding": "identity",
                         "content-length": str(len(payload))})
-        key = self.api_key or os.environ.get("ZEN_SHIM_API_KEY")
-        if key:
-            headers["authorization"] = f"Bearer {key}"
+        if self.send_key:
+            key = self.api_key or os.environ.get("ZEN_SHIM_API_KEY")
+            if key:
+                headers["authorization"] = f"Bearer {key}"
         url = self.router.rstrip("/") + "/v1/chat/completions"
         req = urllib.request.Request(url, data=payload, headers=headers)
         try:

@@ -31,7 +31,12 @@ from shim_base import ShimHandler, run  # noqa: E402
 
 
 class CodexShim(ShimHandler):
-    """Responses in, chat out. One translation, one upstream call."""
+    """Responses in, chat out. One translation, one upstream call.
+
+    Talks to zen-shim, which owns the gate shape. The gate is shape-based,
+    not key-based — a wrong key returns 401 where no key returns 200.
+    """
+    send_key = False
 
     def translate(self, body: dict) -> tuple[int, dict | bytes, str]:
         model_in = body.get("model") or ""
@@ -41,21 +46,23 @@ class CodexShim(ShimHandler):
                    if isinstance(t, dict) and t.get("name")}
 
         chat = R.to_chat_body(body)
-        chat["model"] = model_in
+        # Don't forward Codex's model — let the router pick from the pool.
+        chat.pop("model", None)
 
         status, reply, err = self.upstream_chat(chat)
         if err is not None:
             return status, err, model_in
 
-        resp_obj = R.fold_chat_to_responses(reply, model_in, schemas, caller_tools)
-        return 200, resp_obj, model_in
+        actual_model = reply.get("model") or model_in
+        resp_obj = R.fold_chat_to_responses(reply, actual_model, schemas, caller_tools)
+        return 200, resp_obj, actual_model
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=18893)
-    ap.add_argument("--router", default="http://127.0.0.1:18892")
+    ap.add_argument("--router", default="http://127.0.0.1:18891")
     ap.add_argument("--api-key", default=None)
     ap.add_argument("--log", default=None)
     ap.add_argument("--timeout", type=int, default=600)
